@@ -1,0 +1,178 @@
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
+// ─── Profiles ───
+
+async function getUser(phone) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('phone', phone)
+    .single();
+  return data;
+}
+
+async function createUser(phone, displayName) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .insert({ phone, display_name: displayName })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function updateBalance(phone, amount) {
+  const user = await getUser(phone);
+  if (!user) return null;
+  const { data } = await supabase
+    .from('profiles')
+    .update({ balance: parseFloat(user.balance) + amount })
+    .eq('phone', phone)
+    .select()
+    .single();
+  return data;
+}
+
+// ─── Matches ───
+
+async function getActiveMatch() {
+  const { data } = await supabase
+    .from('matches')
+    .select('*')
+    .in('status', ['open', 'closed'])
+    .order('match_date', { ascending: true })
+    .limit(1)
+    .single();
+  return data;
+}
+
+async function getTodayMatch() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('match_date', today)
+    .limit(1)
+    .single();
+  return data;
+}
+
+async function getNextMatch() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await supabase
+    .from('matches')
+    .select('*')
+    .gte('match_date', today)
+    .in('status', ['upcoming', 'open'])
+    .order('match_date', { ascending: true })
+    .limit(1)
+    .single();
+  return data;
+}
+
+async function updateMatchStatus(matchId, status) {
+  const { data } = await supabase
+    .from('matches')
+    .update({ status })
+    .eq('id', matchId)
+    .select()
+    .single();
+  return data;
+}
+
+async function setMatchWinner(matchId, winner) {
+  const { data } = await supabase
+    .from('matches')
+    .update({ status: 'settled', winner })
+    .eq('id', matchId)
+    .select()
+    .single();
+  return data;
+}
+
+async function getUpcomingMatches(limit = 5) {
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await supabase
+    .from('matches')
+    .select('*')
+    .gte('match_date', today)
+    .neq('status', 'settled')
+    .order('match_date', { ascending: true })
+    .limit(limit);
+  return data || [];
+}
+
+// ─── Bids ───
+
+async function placeBid(userPhone, matchId, teamChosen) {
+  // Upsert: insert or update if user already bid on this match
+  const { data, error } = await supabase
+    .from('bids')
+    .upsert(
+      { user_phone: userPhone, match_id: matchId, team_chosen: teamChosen },
+      { onConflict: 'user_phone,match_id' }
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function getUserBid(userPhone, matchId) {
+  const { data } = await supabase
+    .from('bids')
+    .select('*')
+    .eq('user_phone', userPhone)
+    .eq('match_id', matchId)
+    .single();
+  return data;
+}
+
+async function getMatchBids(matchId) {
+  const { data } = await supabase
+    .from('bids')
+    .select('*, profiles(display_name)')
+    .eq('match_id', matchId);
+  return data || [];
+}
+
+// ─── Admin ───
+
+async function isAdmin(phone) {
+  const admins = (process.env.ADMIN_PHONES || '').split(',').map((p) => p.trim());
+  return admins.includes(phone);
+}
+
+// ─── Leaderboard ───
+
+async function getLeaderboard(limit = 10) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('display_name, balance')
+    .order('balance', { ascending: false })
+    .limit(limit);
+  return data || [];
+}
+
+module.exports = {
+  supabase,
+  getUser,
+  createUser,
+  updateBalance,
+  getActiveMatch,
+  getTodayMatch,
+  getNextMatch,
+  updateMatchStatus,
+  setMatchWinner,
+  getUpcomingMatches,
+  placeBid,
+  getUserBid,
+  getMatchBids,
+  isAdmin,
+  getLeaderboard,
+};

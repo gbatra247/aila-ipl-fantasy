@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc \"C:\\\\Users\\\\GauravBatra\\\\OneDrive - Ayna.AI\\\\Desktop 1\\\\Files\\\\002 - Personal\\\\026 - Vibe coding\\\\001 AIla IPL Fantasy Game\\\\IPL Fantasy Bidding Game_SpecSheet.docx\" -t markdown)",
+      "Bash(pandoc --version)",
+      "Bash(python -c \":*)",
+      "Bash(python3 -c \"print\\(''hi''\\)\")",
+      "Bash(py -c \"print\\(''hi''\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(npm --version)",
+      "Bash(cmd.exe //c \"python -c \"\"import zipfile, xml.etree.ElementTree as ET; path=r''C:\\\\Users\\\\GauravBatra\\\\OneDrive - Ayna.AI\\\\Desktop 1\\\\Files\\\\002 - Personal\\\\026 - Vibe coding\\\\001 AIla IPL Fantasy Game\\\\IPL Fantasy Bidding Game_SpecSheet.docx''; z=zipfile.ZipFile\\(path\\); root=ET.fromstring\\(z.read\\(''word/document.xml''\\)\\); ns=''http://schemas.openxmlformats.org/wordprocessingml/2006/main''; paragraphs=[]; [paragraphs.append\\(''''.join\\([t.text for t in p.iter\\(''{''+ns+''}t''\\) if t.text]\\)\\) for p in root.iter\\(''{''+ns+''}p''\\)]; print\\(chr\\(10\\).join\\([p for p in paragraphs if p]\\)\\)\"\"\")",
+      "Bash(npm install:*)",
+      "WebSearch"
+    ]
+  }
+}
