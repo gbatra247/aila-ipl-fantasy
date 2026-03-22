@@ -6,8 +6,9 @@ const {
   fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const qrcode = require('qrcode-terminal');
 const { handleMessage } = require('./bot');
+
+const PHONE_NUMBER = process.env.ADMIN_PHONES?.split(',')[0];
 
 let retryCount = 0;
 const MAX_RETRIES = 5;
@@ -25,19 +26,28 @@ async function startBot() {
     browser: ['AIla IPL Bot', 'Chrome', '120.0.0'],
   });
 
+  // Request pairing code instead of QR
+  if (!state.creds.registered && PHONE_NUMBER) {
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(PHONE_NUMBER);
+        console.log('\n================================================');
+        console.log('  PAIRING CODE: ' + code);
+        console.log('  ');
+        console.log('  Go to WhatsApp > Linked Devices > Link a Device');
+        console.log('  Then tap "Link with phone number instead"');
+        console.log('  Enter this code: ' + code);
+        console.log('================================================\n');
+      } catch (err) {
+        console.error('Failed to get pairing code:', err.message);
+      }
+    }, 3000);
+  }
+
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr: qrCode } = update;
-
-    if (qrCode) {
-      retryCount = 0;
-      console.log('\n========================================');
-      console.log('  Scan this QR code with WhatsApp:');
-      console.log('  (Phone > Settings > Linked Devices)');
-      console.log('========================================\n');
-      qrcode.generate(qrCode, { small: true });
-    }
+    const { connection, lastDisconnect } = update;
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
