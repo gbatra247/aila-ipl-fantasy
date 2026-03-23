@@ -6,11 +6,11 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
+const qrcode = require('qrcode-terminal');
 const { handleMessage } = require('./bot');
-
-const PHONE_NUMBER = process.env.ADMIN_PHONES?.split(',')[0];
 
 function deleteAuthFolder() {
   const authPath = path.join(process.cwd(), '.auth');
@@ -26,42 +26,34 @@ async function startBot() {
 
   console.log('Using WA version:', version.join('.'));
 
-  const sock = makeWASocket({
-    auth: state,
-    version,
-    logger: pino({ level: 'silent' }),
-    browser: ['AIla IPL Bot', 'Chrome', '120.0.0'],
-  });
+  const logger = pino({ level: 'silent' });
 
-  // Request pairing code if not yet registered
-  if (!state.creds.registered && PHONE_NUMBER) {
-    setTimeout(async () => {
-      try {
-        const code = await sock.requestPairingCode(PHONE_NUMBER);
-        console.log('\n================================================');
-        console.log('  PAIRING CODE: ' + code);
-        console.log('');
-        console.log('  On your phone:');
-        console.log('  1. WhatsApp > Linked Devices > Link a Device');
-        console.log('  2. Tap "Link with phone number instead"');
-        console.log('  3. Enter phone number: +' + PHONE_NUMBER);
-        console.log('  4. Enter code: ' + code);
-        console.log('');
-        console.log('  Code expires in ~60 seconds!');
-        console.log('================================================\n');
-      } catch (err) {
-        console.error('Failed to get pairing code:', err.message);
-        console.log('Cleaning auth and retrying in 10 seconds...');
-        deleteAuthFolder();
-        setTimeout(() => startBot(), 10000);
-      }
-    }, 5000);
-  }
+  const sock = makeWASocket({
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
+    version,
+    logger,
+    browser: ['AIla IPL Bot', 'Chrome', '120.0.0'],
+    syncFullHistory: true,
+    getMessage: async (key) => {
+      return { conversation: '' };
+    },
+  });
 
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr: qrCode } = update;
+
+    if (qrCode) {
+      console.log('\n========================================');
+      console.log('  Scan this QR with WhatsApp:');
+      console.log('  (Linked Devices > Link a Device)');
+      console.log('========================================\n');
+      qrcode.generate(qrCode, { small: true });
+    }
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
@@ -69,7 +61,7 @@ async function startBot() {
       if (statusCode === DisconnectReason.loggedOut) {
         console.log('Logged out. Cleaning auth and restarting...');
         deleteAuthFolder();
-        setTimeout(() => startBot(), 10000);
+        setTimeout(() => startBot(), 5000);
       } else {
         console.log('Connection lost. Reconnecting in 5 seconds...');
         setTimeout(() => startBot(), 5000);
@@ -79,19 +71,33 @@ async function startBot() {
     }
   });
 
-  sock.ev.on('messages.upsert', async ({ messages }) => {
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    console.log('Message event:', type, '- Count:', messages.length);
+
     for (const msg of messages) {
-      if (msg.key.fromMe) continue;
+      console.log('From:', msg.key.remoteJid, 'FromMe:', msg.key.fromMe);
+      console.log('Message type:', Object.keys(msg.message || {}));
+
+      // Skip bot's own replies (they don't start with !)
+      // But allow our own !commands through
+      const prefix = process.env.BOT_PREFIX || '!';
+      const msgText =
+        msg.message?.conversation ||
+        msg.message?.extendedTextMessage?.text ||
+        '';
+      if (msg.key.fromMe && !msgText.startsWith(prefix)) continue;
 
       const text =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
         '';
 
+      console.log('Text:', text);
+
       if (!text) continue;
 
-      const sender = msg.key.participant || msg.key.remoteJid;
-      const userPhone = sender.replace('@s.whatsapp.net', '');
+      const sender = msg.key.participant || msg.key.remoteJid || '';
+      const userPhone = sender.split('@')[0] || 'unknown';
       const chatId = msg.key.remoteJid;
 
       try {
@@ -100,16 +106,29 @@ async function startBot() {
           userPhone,
           chatId,
         });
+        console.log('Reply:', reply ? reply.substring(0, 50) + '...' : 'null');
+        console.log('Sending to:', chatId);
         if (reply) {
-          await sock.sendMessage(chatId, { text: reply }, { quoted: msg });
+          // Retry up to 3 times if "No sessions" error
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              await sock.sendMessage(chatId, { text: reply });
+              console.log('Message sent successfully!');
+              break;
+            } catch (sendErr) {
+              console.error(`Send attempt ${attempt} failed:`, sendErr.message);
+              if (attempt < 3) {
+                await new Promise((r) => setTimeout(r, 2000));
+              }
+            }
+          }
         }
       } catch (err) {
-        console.error('Error handling message:', err);
+        console.error('Error handling message:', err.message);
       }
     }
   });
 }
 
 console.log('Starting AIla IPL Fantasy Bot...');
-console.log('Phone number for pairing: +' + PHONE_NUMBER);
 startBot();
