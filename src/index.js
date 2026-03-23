@@ -7,6 +7,9 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  proto,
+  generateWAMessageFromContent,
+  generateMessageID,
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
@@ -15,6 +18,7 @@ const http = require('http');
 const { handleMessage } = require('./bot');
 
 let latestQR = null;
+const msgStore = {};
 
 function deleteAuthFolder() {
   const authPath = path.join(process.cwd(), '.auth');
@@ -27,7 +31,6 @@ function deleteAuthFolder() {
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('.auth');
   const { version } = await fetchLatestBaileysVersion();
-
   console.log('Using WA version:', version.join('.'));
 
   const logger = pino({ level: 'silent' });
@@ -40,14 +43,21 @@ async function startBot() {
     version,
     logger,
     browser: ['AIla IPL Bot', 'Chrome', '120.0.0'],
-    syncFullHistory: false,
-    shouldSyncHistoryMessage: () => false,
+    syncFullHistory: true,
+    markOnlineOnConnect: true,
     getMessage: async (key) => {
-      return { conversation: '' };
+      return msgStore[key.id] || { conversation: '' };
     },
   });
 
   sock.ev.on('creds.update', saveCreds);
+
+  // Store messages
+  sock.ev.on('messages.upsert', async ({ messages: msgs }) => {
+    for (const m of msgs) {
+      if (m.message) msgStore[m.key.id] = m.message;
+    }
+  });
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr: qrCode } = update;
@@ -55,85 +65,49 @@ async function startBot() {
     if (qrCode) {
       latestQR = qrCode;
       console.log('\n========================================');
-      console.log('  Scan this QR with WhatsApp:');
-      console.log('  (Linked Devices > Link a Device)');
+      console.log('  Scan QR with WhatsApp:');
       console.log('========================================\n');
       qrcode.generate(qrCode, { small: true });
-
-      // Generate QR as data URL for Railway
-      QRCode.toDataURL(qrCode, { width: 300 }).then(url => {
-        console.log('\n🔗 If QR above is hard to scan, open this URL in browser:');
-        console.log(`   http://localhost:${process.env.PORT || 3000}/qr`);
-        console.log('');
-      }).catch(() => {});
+      console.log('\n🔗 Or open: http://localhost:' + (process.env.PORT || 3000) + '/qr\n');
     }
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-
       if (statusCode === DisconnectReason.loggedOut) {
-        console.log('Logged out. Cleaning auth and restarting...');
+        console.log('Logged out. Cleaning auth...');
         deleteAuthFolder();
         setTimeout(() => startBot(), 5000);
       } else {
-        console.log('Connection lost. Reconnecting in 5 seconds...');
+        console.log('Connection lost. Reconnecting...');
         setTimeout(() => startBot(), 5000);
       }
     } else if (connection === 'open') {
+      latestQR = null;
       console.log('\n*** AIla IPL Fantasy Bot is ready! ***\n');
-
-      // Pre-load all group sessions to fix "not-acceptable" errors
-      try {
-        const groups = await sock.groupFetchAllParticipating();
-        const groupIds = Object.keys(groups);
-        console.log(`Loaded ${groupIds.length} groups for encryption sessions`);
-      } catch (err) {
-        console.log('Could not pre-load groups:', err.message);
-      }
     }
   });
 
+  // Command handler
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    console.log('Message event:', type, '- Count:', messages.length);
+    if (type !== 'notify') return;
 
     for (const msg of messages) {
-      const isGroup = msg.key.remoteJid?.endsWith('@g.us');
-      console.log('From:', msg.key.remoteJid, 'FromMe:', msg.key.fromMe, 'IsGroup:', isGroup);
-      if (isGroup) console.log('Group sender:', msg.key.participant);
-      console.log('Message type:', Object.keys(msg.message || {}));
-
-      // Skip bot's own replies (they don't start with !)
-      // But allow our own !commands through
       const prefix = process.env.BOT_PREFIX || '!';
-      const msgText =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        '';
-
-      // Skip status updates
-      if (msg.key.remoteJid === 'status@broadcast') continue;
-
-      // Skip bot's own non-command messages
-      if (msg.key.fromMe && !msgText.startsWith(prefix)) continue;
-
       const text =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        msg.message?.videoMessage?.caption ||
-        msg.message?.buttonsResponseMessage?.selectedDisplayText ||
-        msg.message?.listResponseMessage?.title ||
-        msg.message?.templateButtonReplyMessage?.selectedDisplayText ||
         '';
 
-      console.log('Text:', text);
+      if (msg.key.remoteJid === 'status@broadcast') continue;
+      if (msg.key.fromMe && !text.startsWith(prefix)) continue;
+      if (!text || !text.startsWith(prefix)) continue;
 
-      if (!text) continue;
-
+      const isGroup = msg.key.remoteJid?.endsWith('@g.us');
       const sender = msg.key.participant || msg.key.remoteJid || '';
       const userPhone = sender.split('@')[0] || 'unknown';
       const chatId = msg.key.remoteJid;
+
+      console.log(`[${isGroup ? 'GROUP' : 'DM'}] From: ${userPhone} Text: ${text}`);
 
       try {
         const reply = await handleMessage(sock, {
@@ -141,76 +115,55 @@ async function startBot() {
           userPhone,
           chatId,
         });
-        console.log('Reply:', reply ? reply.substring(0, 50) + '...' : 'null');
-        console.log('Sending to:', chatId);
-        if (reply) {
-          // For groups, ensure we have the group metadata/session
-          if (chatId.endsWith('@g.us')) {
-            try {
-              await sock.groupMetadata(chatId);
-            } catch (e) {
-              console.log('Group metadata fetch:', e.message);
-            }
-          }
 
-          // Retry up to 3 times
-          for (let attempt = 1; attempt <= 3; attempt++) {
+        if (!reply) continue;
+
+        // Try sending to group first
+        let sent = false;
+        try {
+          await sock.sendMessage(chatId, { text: reply });
+          console.log('✅ Sent to', chatId);
+          sent = true;
+        } catch (e1) {
+          console.log('Group send failed:', e1.message);
+        }
+
+        // If group send fails, DM the user instead
+        if (!sent && isGroup) {
+          const dmId = sender.includes('@') ? sender : sender + '@s.whatsapp.net';
+          try {
+            await sock.sendMessage(dmId, { text: `_(Reply to your "${text}" in the group)_\n\n${reply}` });
+            console.log('✅ Sent via DM to', dmId);
+          } catch (e2) {
+            // Try with @lid format
             try {
-              await sock.sendMessage(chatId, { text: reply });
-              console.log('Message sent successfully!');
-              break;
-            } catch (sendErr) {
-              console.error(`Send attempt ${attempt} failed:`, sendErr.message);
-              if (sendErr.message?.includes('not-acceptable') && attempt === 1) {
-                // Try re-establishing group session
-                try {
-                  console.log('Re-establishing group session...');
-                  await sock.groupMetadata(chatId);
-                  await new Promise((r) => setTimeout(r, 1000));
-                } catch (e) {}
-              }
-              if (attempt < 3) {
-                await new Promise((r) => setTimeout(r, 2000 * attempt));
-              }
+              await sock.sendMessage(sender, { text: `_(Reply to your "${text}" in the group)_\n\n${reply}` });
+              console.log('✅ Sent via DM (lid) to', sender);
+            } catch (e3) {
+              console.error('❌ All sends failed:', e3.message);
             }
           }
         }
+
       } catch (err) {
-        console.error('Error handling message:', err.message);
+        console.error('❌ Error:', err.message);
       }
     }
   });
 }
 
-// Mini HTTP server for QR code scanning (useful on Railway)
+// HTTP server for QR
 const PORT = process.env.PORT || 3000;
 http.createServer(async (req, res) => {
   if (req.url === '/qr' && latestQR) {
     const qrImage = await QRCode.toDataURL(latestQR, { width: 400 });
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`
-      <html>
-        <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;flex-direction:column">
-          <h2 style="color:white;font-family:sans-serif">Scan with WhatsApp</h2>
-          <img src="${qrImage}" style="border-radius:12px"/>
-          <p style="color:#888;font-family:sans-serif">Linked Devices > Link a Device</p>
-          <script>setTimeout(()=>location.reload(),30000)</script>
-        </body>
-      </html>
-    `);
+    res.end(`<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;flex-direction:column"><h2 style="color:white;font-family:sans-serif">Scan with WhatsApp</h2><img src="${qrImage}" style="border-radius:12px"/><script>setTimeout(()=>location.reload(),30000)</script></body></html>`);
   } else {
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end('<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111"><h2 style="color:white;font-family:sans-serif">AIla Bot is running! No QR needed.</h2></body></html>');
+    res.end('<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111"><h2 style="color:white;font-family:sans-serif">AIla Bot running! No QR needed.</h2></body></html>');
   }
-}).listen(PORT, () => {
-  console.log(`QR server running on port ${PORT}`);
-});
+}).listen(PORT, () => console.log(`QR server on port ${PORT}`));
 
 console.log('Starting AIla IPL Fantasy Bot...');
-
-// Only delete auth if explicitly requested
-if (process.env.FORCE_NEW_AUTH === 'true') {
-  deleteAuthFolder();
-}
-
 startBot();

@@ -13,7 +13,9 @@
       "Bash(npm install:*)",
       "WebSearch",
       "Bash(pm2 logs:*)",
-      "Bash(pm2 restart:*)"
+      "Bash(pm2 restart:*)",
+      "Bash(pm2 stop:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }
