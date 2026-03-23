@@ -49,7 +49,7 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', (update) => {
+  sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr: qrCode } = update;
 
     if (qrCode) {
@@ -208,8 +208,8 @@ http.createServer(async (req, res) => {
 
 console.log('Starting AIla IPL Fantasy Bot...');
 
-// Delete old auth to force fresh pairing on Railway
-if (process.env.RAILWAY_ENVIRONMENT) {
+// Only delete auth if explicitly requested
+if (process.env.FORCE_NEW_AUTH === 'true') {
   deleteAuthFolder();
 }
 
