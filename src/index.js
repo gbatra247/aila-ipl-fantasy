@@ -40,7 +40,8 @@ async function startBot() {
     version,
     logger,
     browser: ['AIla IPL Bot', 'Chrome', '120.0.0'],
-    syncFullHistory: true,
+    syncFullHistory: false,
+    shouldSyncHistoryMessage: () => false,
     getMessage: async (key) => {
       return { conversation: '' };
     },
@@ -80,6 +81,15 @@ async function startBot() {
       }
     } else if (connection === 'open') {
       console.log('\n*** AIla IPL Fantasy Bot is ready! ***\n');
+
+      // Pre-load all group sessions to fix "not-acceptable" errors
+      try {
+        const groups = await sock.groupFetchAllParticipating();
+        const groupIds = Object.keys(groups);
+        console.log(`Loaded ${groupIds.length} groups for encryption sessions`);
+      } catch (err) {
+        console.log('Could not pre-load groups:', err.message);
+      }
     }
   });
 
@@ -134,7 +144,16 @@ async function startBot() {
         console.log('Reply:', reply ? reply.substring(0, 50) + '...' : 'null');
         console.log('Sending to:', chatId);
         if (reply) {
-          // Retry up to 3 times if "No sessions" error
+          // For groups, ensure we have the group metadata/session
+          if (chatId.endsWith('@g.us')) {
+            try {
+              await sock.groupMetadata(chatId);
+            } catch (e) {
+              console.log('Group metadata fetch:', e.message);
+            }
+          }
+
+          // Retry up to 3 times
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
               await sock.sendMessage(chatId, { text: reply });
@@ -142,8 +161,16 @@ async function startBot() {
               break;
             } catch (sendErr) {
               console.error(`Send attempt ${attempt} failed:`, sendErr.message);
+              if (sendErr.message?.includes('not-acceptable') && attempt === 1) {
+                // Try re-establishing group session
+                try {
+                  console.log('Re-establishing group session...');
+                  await sock.groupMetadata(chatId);
+                  await new Promise((r) => setTimeout(r, 1000));
+                } catch (e) {}
+              }
               if (attempt < 3) {
-                await new Promise((r) => setTimeout(r, 2000));
+                await new Promise((r) => setTimeout(r, 2000 * attempt));
               }
             }
           }
