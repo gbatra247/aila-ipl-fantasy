@@ -7,7 +7,7 @@ async function requireAdmin(userPhone) {
   return null;
 }
 
-// !open [matchId] - Open bidding for next upcoming match or a specific match
+// !open [matchId] - Open bidding and auto-charge all players $1
 async function open({ userPhone, args }) {
   const denied = await requireAdmin(userPhone);
   if (denied) return denied;
@@ -23,9 +23,32 @@ async function open({ userPhone, args }) {
   }
 
   await db.updateMatchStatus(match.id, 'open');
+
+  // Auto-charge all registered players $1
+  const players = await db.getAllPlayers();
+  let charged = 0;
+  let broke = 0;
+  for (const p of players) {
+    if (parseFloat(p.balance) >= 1) {
+      await db.updateBalance(p.phone, -1);
+      charged++;
+    } else {
+      broke++;
+    }
+  }
+
   const date = new Date(match.match_date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 
-  return `🟢 *BIDDING OPEN!*\n━━━━━━━━━━━━━━━━━━━━\n🏏 *${match.team_a} vs ${match.team_b}*\n📅 ${date}  │  Match #${match.id}\n━━━━━━━━━━━━━━━━━━━━\n\nPlace your bids! *!bid ${match.team_a}* or *!bid ${match.team_b}*`;
+  let text = `🟢 *BIDDING OPEN!*\n━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `🏏 *${match.team_a} vs ${match.team_b}*\n`;
+  text += `📅 ${date}  │  Match #${match.id}\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+  text += `💰 *$1 auto-deducted* from ${charged} players\n`;
+  if (broke > 0) text += `⚠️ ${broke} player(s) had insufficient balance\n`;
+  text += `\nPick your team: *!bid ${match.team_a}* or *!bid ${match.team_b}*`;
+  text += `\n\n⏳ If you don't pick, your $1 still goes to the pool!`;
+
+  return text;
 }
 
 // !close [matchId] - Close bidding for a specific match or the oldest open match
@@ -101,7 +124,10 @@ async function winner({ userPhone, args }) {
   }
 
   const bids = await db.getMatchBids(match.id);
-  const payouts = calculatePayouts(bids, winningTeam, match.weightage || 1.0);
+  // Pool = all registered players (everyone was charged $1 at open)
+  const allPlayers = await db.getAllPlayers();
+  const totalPool = allPlayers.length; // everyone charged $1
+  const payouts = calculatePayouts(bids, winningTeam, match.weightage || 1.0, totalPool);
 
   for (const p of payouts) {
     await db.updateBalance(p.phone, p.payout);
@@ -109,10 +135,14 @@ async function winner({ userPhone, args }) {
 
   await db.setMatchWinner(match.id, winningTeam);
 
+  const nonBidders = allPlayers.filter(
+    p => !bids.find(b => b.user_phone === p.phone)
+  );
+
   let text = `🏆 *${winningTeam} WINS!*\n`;
   text += `━━━━━━━━━━━━━━━━━━━━\n`;
   text += `🏏 ${match.team_a} vs ${match.team_b}  │  #${match.id}\n`;
-  text += `💰 Pool: $${bids.length}`;
+  text += `💰 Pool: *$${totalPool}*`;
   text += match.weightage && match.weightage !== 1 ? ` (${match.weightage}x)\n` : '\n';
   text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
@@ -127,9 +157,16 @@ async function winner({ userPhone, args }) {
 
   const losers = bids.filter((b) => b.team_chosen !== winningTeam);
   if (losers.length > 0) {
-    text += `\n*Better luck next time:*\n`;
+    text += `\n*Wrong pick:*\n`;
     losers.forEach((b) => {
       text += `  😢 ${b.profiles?.display_name || b.user_phone}\n`;
+    });
+  }
+
+  if (nonBidders.length > 0) {
+    text += `\n*Didn't pick (lost $1):*\n`;
+    nonBidders.forEach((p) => {
+      text += `  💤 ${p.display_name}\n`;
     });
   }
 

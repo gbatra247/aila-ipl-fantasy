@@ -1,31 +1,34 @@
-function calculateOdds(bids, teamA, teamB) {
+function calculateOdds(bids, teamA, teamB, totalPlayers) {
   const bidsA = bids.filter((b) => b.team_chosen === teamA).length;
   const bidsB = bids.filter((b) => b.team_chosen === teamB).length;
-  const total = bidsA + bidsB;
+  const totalBids = bidsA + bidsB;
+  // Pool = all charged players (if provided), otherwise just bidders
+  const pool = totalPlayers || totalBids;
 
-  if (total === 0) {
+  if (totalBids === 0) {
     return {
       teamA: { bids: 0, odds: 50, payout: 2.0 },
       teamB: { bids: 0, odds: 50, payout: 2.0 },
-      totalPool: 0,
+      totalPool: pool,
     };
   }
 
-  const oddsA = ((bidsA / total) * 100).toFixed(1);
-  const oddsB = ((bidsB / total) * 100).toFixed(1);
-  const payoutA = bidsA > 0 ? (total / bidsA).toFixed(2) : '-.--';
-  const payoutB = bidsB > 0 ? (total / bidsB).toFixed(2) : '-.--';
+  const oddsA = ((bidsA / totalBids) * 100).toFixed(1);
+  const oddsB = ((bidsB / totalBids) * 100).toFixed(1);
+  const payoutA = bidsA > 0 ? (pool / bidsA).toFixed(2) : '-.--';
+  const payoutB = bidsB > 0 ? (pool / bidsB).toFixed(2) : '-.--';
 
   return {
     teamA: { bids: bidsA, odds: oddsA, payout: payoutA },
     teamB: { bids: bidsB, odds: oddsB, payout: payoutB },
-    totalPool: total,
+    totalPool: pool,
   };
 }
 
-function calculatePayouts(bids, winningTeam, weightage = 1.0) {
+// totalPool = total players charged (not just bidders)
+function calculatePayouts(bids, winningTeam, weightage = 1.0, totalPool) {
   const winningBids = bids.filter((b) => b.team_chosen === winningTeam);
-  const totalPool = bids.length; // $1 per bid
+  const pool = totalPool || bids.length;
   const totalWinningBids = winningBids.length;
 
   if (totalWinningBids === 0) return [];
@@ -33,7 +36,7 @@ function calculatePayouts(bids, winningTeam, weightage = 1.0) {
   return winningBids.map((b) => ({
     phone: b.user_phone,
     displayName: b.profiles?.display_name || b.user_phone,
-    payout: parseFloat(((totalPool / totalWinningBids) * weightage).toFixed(2)),
+    payout: parseFloat(((pool / totalWinningBids) * weightage).toFixed(2)),
   }));
 }
 

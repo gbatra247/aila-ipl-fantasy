@@ -1,4 +1,4 @@
-const { getUser, getOpenMatches, getMatchById, placeBid, getUserBid, updateBalance } = require('../db');
+const { getUser, getOpenMatches, getMatchById, placeBid, getUserBid } = require('../db');
 
 const TEAM_EMOJI = {
   CSK: '💛', MI: '💙', RCB: '❤️', KKR: '💜', SRH: '🧡',
@@ -6,7 +6,6 @@ const TEAM_EMOJI = {
 };
 
 module.exports = async function bid({ userPhone, args }) {
-  // Support: !bid <team> (single match) or !bid <matchId> <team> (multi match)
   if (!args[0]) {
     return '❌ Usage: *!bid <team>* or *!bid <matchId> <team>*\nExample: !bid CSK or !bid 5 CSK';
   }
@@ -38,14 +37,13 @@ module.exports = async function bid({ userPhone, args }) {
     if (openMatches.length === 1) {
       match = openMatches[0];
     } else {
-      // Multiple open matches — find which one has this team
       const matching = openMatches.filter(
         m => m.team_a === teamArg || m.team_b === teamArg
       );
       if (matching.length === 1) {
         match = matching[0];
       } else if (matching.length > 1) {
-        let text = `⚠️ *${teamArg}* is playing in multiple open matches:\n\n`;
+        let text = `⚠️ *${teamArg}* is in multiple open matches:\n\n`;
         matching.forEach(m => {
           text += `  Match #${m.id}: ${m.team_a} vs ${m.team_b}\n`;
         });
@@ -76,22 +74,15 @@ module.exports = async function bid({ userPhone, args }) {
     return `🔄 *Switched to ${teamArg}!* ${emoji}\n🏏 #${match.id}: ${match.team_a} vs ${match.team_b}`;
   }
 
-  if (parseFloat(user.balance) < 1) {
-    return '💸 Not enough balance! You need *$1* to bid.';
-  }
-
-  await updateBalance(userPhone, -1);
+  // No extra charge — $1 was already deducted when bidding opened
   await placeBid(userPhone, match.id, teamArg);
-
-  const newBal = (parseFloat(user.balance) - 1).toFixed(2);
 
   let text = `${emoji} *BID PLACED!* ${emoji}\n`;
   text += `━━━━━━━━━━━━━━━━━━━━\n`;
   text += `🏏 #${match.id}: ${match.team_a} vs ${match.team_b}\n`;
   text += `✅ Your pick: *${teamArg}*\n`;
-  text += `💰 -$1 → Balance: *$${newBal}*\n`;
   text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-  text += `Type *!match* for live odds 📊`;
+  text += `You can switch anytime before close!\nType *!match* for live odds 📊`;
 
   return text;
 };

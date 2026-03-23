@@ -38,6 +38,13 @@ async function updateBalance(phone, amount) {
   return data;
 }
 
+async function getAllPlayers() {
+  const { data } = await supabase
+    .from('profiles')
+    .select('*');
+  return data || [];
+}
+
 // ─── Matches ───
 
 // Get ALL open/closed matches (supports multiple simultaneous)
@@ -252,4 +259,5 @@ module.exports = {
   isAdmin,
   getLeaderboard,
   resetAll,
+  getAllPlayers,
 };
