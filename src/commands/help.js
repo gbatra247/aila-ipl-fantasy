@@ -10,6 +10,8 @@ module.exports = async function help() {
 !help - This message
 
 *Admin Commands:*
+!addmatch <A> vs <B> <date> [wt] - Add match
+!deletematch <id> - Remove match
 !open - Open bidding
 !close - Close bidding
 !winner <team> - Declare winner & payout

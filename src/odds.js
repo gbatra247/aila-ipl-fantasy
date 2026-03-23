@@ -23,7 +23,7 @@ function calculateOdds(bids, teamA, teamB) {
   };
 }
 
-function calculatePayouts(bids, winningTeam) {
+function calculatePayouts(bids, winningTeam, weightage = 1.0) {
   const winningBids = bids.filter((b) => b.team_chosen === winningTeam);
   const totalPool = bids.length; // $1 per bid
   const totalWinningBids = winningBids.length;
@@ -33,7 +33,7 @@ function calculatePayouts(bids, winningTeam) {
   return winningBids.map((b) => ({
     phone: b.user_phone,
     displayName: b.profiles?.display_name || b.user_phone,
-    payout: parseFloat((totalPool / totalWinningBids).toFixed(2)),
+    payout: parseFloat(((totalPool / totalWinningBids) * weightage).toFixed(2)),
   }));
 }
 

@@ -22,6 +22,8 @@ const commands = {
   winner: admin.winner,
   schedule: admin.schedule,
   status: admin.status,
+  addmatch: admin.addmatch,
+  deletematch: admin.deletematch,
 };
 
 async function handleMessage(sock, msg) {

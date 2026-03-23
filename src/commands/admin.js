@@ -65,9 +65,9 @@ async function winner({ userPhone, args }) {
     return `❌ Invalid team. Choose *${match.team_a}* or *${match.team_b}*`;
   }
 
-  // Get all bids and calculate payouts
+  // Get all bids and calculate payouts (apply weightage)
   const bids = await db.getMatchBids(match.id);
-  const payouts = calculatePayouts(bids, winningTeam);
+  const payouts = calculatePayouts(bids, winningTeam, match.weightage || 1.0);
 
   // Credit winnings to each winner
   for (const p of payouts) {
@@ -80,7 +80,8 @@ async function winner({ userPhone, args }) {
   // Build result message
   let text = `🏆 *${winningTeam} WINS!*\n\n`;
   text += `🏏 ${match.team_a} vs ${match.team_b}\n`;
-  text += `💰 Total Pool: $${bids.length}\n\n`;
+  text += `💰 Total Pool: $${bids.length}`;
+  text += match.weightage && match.weightage !== 1 ? ` (${match.weightage}x weightage)\n\n` : '\n\n';
 
   if (payouts.length > 0) {
     text += `*Winners:*\n`;
@@ -104,6 +105,50 @@ async function winner({ userPhone, args }) {
   return text;
 }
 
+// !addmatch <TeamA> vs <TeamB> <YYYY-MM-DD> [weightage]
+async function addmatch({ userPhone, args }) {
+  const denied = await requireAdmin(userPhone);
+  if (denied) return denied;
+
+  // Parse: CSK vs MI 2026-03-27 1.5
+  const raw = args.join(' ');
+  const vsMatch = raw.match(/^(\w+)\s+vs\s+(\w+)\s+(\d{4}-\d{2}-\d{2})(?:\s+([\d.]+))?$/i);
+  if (!vsMatch) {
+    return '❌ Usage: !addmatch <TeamA> vs <TeamB> <YYYY-MM-DD> [weightage]\nExample: !addmatch CSK vs MI 2026-03-27 1.5';
+  }
+
+  const teamA = vsMatch[1].toUpperCase();
+  const teamB = vsMatch[2].toUpperCase();
+  const matchDate = vsMatch[3];
+  const weightage = parseFloat(vsMatch[4]) || 1.0;
+
+  try {
+    const match = await db.addMatch(teamA, teamB, matchDate, weightage);
+    const date = new Date(matchDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+    return `✅ Match added!\n\n🏏 *${teamA} vs ${teamB}*\n📅 ${date}\n⚖️ Weightage: ${weightage}x\n🆔 Match #${match.id}`;
+  } catch (err) {
+    return `❌ Error adding match: ${err.message}`;
+  }
+}
+
+// !deletematch <id>
+async function deletematch({ userPhone, args }) {
+  const denied = await requireAdmin(userPhone);
+  if (denied) return denied;
+
+  const matchId = parseInt(args[0]);
+  if (!matchId) {
+    return '❌ Usage: !deletematch <match_id>\nUse !schedule to see match IDs.';
+  }
+
+  try {
+    const match = await db.deleteMatch(matchId);
+    return `🗑️ Deleted match #${matchId}: *${match.team_a} vs ${match.team_b}*`;
+  } catch (err) {
+    return `❌ Error: Match #${matchId} not found.`;
+  }
+}
+
 // !schedule - Show upcoming matches
 async function schedule({ userPhone }) {
   const denied = await requireAdmin(userPhone);
@@ -122,7 +167,8 @@ async function schedule({ userPhone }) {
       month: 'short',
     });
     const statusIcon = { upcoming: '⬜', open: '🟢', closed: '🔴' };
-    text += `${statusIcon[m.status] || '⬜'} ${date}: *${m.team_a} vs ${m.team_b}*\n`;
+    const wt = m.weightage && m.weightage !== 1 ? ` (${m.weightage}x)` : '';
+    text += `${statusIcon[m.status] || '⬜'} #${m.id} ${date}: *${m.team_a} vs ${m.team_b}*${wt}\n`;
   });
 
   return text;
@@ -159,4 +205,4 @@ async function status({ userPhone }) {
   return text;
 }
 
-module.exports = { open, close, winner, schedule, status };
+module.exports = { open, close, winner, schedule, status, addmatch, deletematch };

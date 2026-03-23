@@ -141,6 +141,31 @@ async function getMatchBids(matchId) {
   return data || [];
 }
 
+// ─── Match Management ───
+
+async function addMatch(teamA, teamB, matchDate, weightage = 1.0) {
+  const { data, error } = await supabase
+    .from('matches')
+    .insert({ team_a: teamA, team_b: teamB, match_date: matchDate, weightage })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function deleteMatch(matchId) {
+  // Delete any bids for this match first
+  await supabase.from('bids').delete().eq('match_id', matchId);
+  const { data, error } = await supabase
+    .from('matches')
+    .delete()
+    .eq('id', matchId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ─── Admin ───
 
 async function isAdmin(phone) {
@@ -173,6 +198,8 @@ module.exports = {
   placeBid,
   getUserBid,
   getMatchBids,
+  addMatch,
+  deleteMatch,
   isAdmin,
   getLeaderboard,
 };
