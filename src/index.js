@@ -75,7 +75,9 @@ async function startBot() {
     console.log('Message event:', type, '- Count:', messages.length);
 
     for (const msg of messages) {
-      console.log('From:', msg.key.remoteJid, 'FromMe:', msg.key.fromMe);
+      const isGroup = msg.key.remoteJid?.endsWith('@g.us');
+      console.log('From:', msg.key.remoteJid, 'FromMe:', msg.key.fromMe, 'IsGroup:', isGroup);
+      if (isGroup) console.log('Group sender:', msg.key.participant);
       console.log('Message type:', Object.keys(msg.message || {}));
 
       // Skip bot's own replies (they don't start with !)
@@ -84,12 +86,23 @@ async function startBot() {
       const msgText =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
+        msg.message?.imageMessage?.caption ||
         '';
+
+      // Skip status updates
+      if (msg.key.remoteJid === 'status@broadcast') continue;
+
+      // Skip bot's own non-command messages
       if (msg.key.fromMe && !msgText.startsWith(prefix)) continue;
 
       const text =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
+        msg.message?.imageMessage?.caption ||
+        msg.message?.videoMessage?.caption ||
+        msg.message?.buttonsResponseMessage?.selectedDisplayText ||
+        msg.message?.listResponseMessage?.title ||
+        msg.message?.templateButtonReplyMessage?.selectedDisplayText ||
         '';
 
       console.log('Text:', text);
