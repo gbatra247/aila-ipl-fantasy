@@ -1,20 +1,26 @@
 module.exports = async function help() {
-  return `🏏 *AIla IPL Fantasy Game* 🏏
+  let text = `━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `🏏 *AIla IPL Fantasy Game* 🏏\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-*Commands:*
-!register <name> - Sign up with your name
-!match - See today's match & live odds
-!bid <team> - Place your $1 bid
-!balance - Check your balance
-!leaderboard - Top players
-!help - This message
+  text += `*Player Commands:*\n`;
+  text += `!register <name> — Sign up\n`;
+  text += `!match — Active matches & odds\n`;
+  text += `!bid <team> — Bet $1 on a team\n`;
+  text += `!bid <id> <team> — Bet on specific match\n`;
+  text += `!schedule — View all upcoming matches\n`;
+  text += `!balance — Check your wallet\n`;
+  text += `!leaderboard — Top players\n`;
+  text += `!help — This message\n\n`;
 
-*Admin Commands:*
-!addmatch <A> vs <B> <date> [wt] - Add match
-!deletematch <id> - Remove match
-!open - Open bidding
-!close - Close bidding
-!winner <team> - Declare winner & payout
-!schedule - Upcoming matches
-!status - Current match stats`;
+  text += `*Admin Commands:*\n`;
+  text += `!addmatch A vs B YYYY-MM-DD [wt]\n`;
+  text += `!deletematch <id>\n`;
+  text += `!open [id] — Open bidding\n`;
+  text += `!close [id] — Close bidding\n`;
+  text += `!winner [id] <team> — Settle match\n`;
+  text += `!status [id] — Betting stats\n\n`;
+
+  text += `━━━━━━━━━━━━━━━━━━━━`;
+  return text;
 };

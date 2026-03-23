@@ -40,6 +40,17 @@ async function updateBalance(phone, amount) {
 
 // ─── Matches ───
 
+// Get ALL open/closed matches (supports multiple simultaneous)
+async function getActiveMatches() {
+  const { data } = await supabase
+    .from('matches')
+    .select('*')
+    .in('status', ['open', 'closed'])
+    .order('match_date', { ascending: true });
+  return data || [];
+}
+
+// Get single active match (backward compat)
 async function getActiveMatch() {
   const { data } = await supabase
     .from('matches')
@@ -47,6 +58,25 @@ async function getActiveMatch() {
     .in('status', ['open', 'closed'])
     .order('match_date', { ascending: true })
     .limit(1)
+    .single();
+  return data;
+}
+
+// Get all open matches (for bidding)
+async function getOpenMatches() {
+  const { data } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('status', 'open')
+    .order('match_date', { ascending: true });
+  return data || [];
+}
+
+async function getMatchById(matchId) {
+  const { data } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('id', matchId)
     .single();
   return data;
 }
@@ -75,6 +105,17 @@ async function getNextMatch() {
   return data;
 }
 
+async function getNextUpcomingMatch() {
+  const { data } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('status', 'upcoming')
+    .order('match_date', { ascending: true })
+    .limit(1)
+    .single();
+  return data;
+}
+
 async function updateMatchStatus(matchId, status) {
   const { data } = await supabase
     .from('matches')
@@ -95,12 +136,10 @@ async function setMatchWinner(matchId, winner) {
   return data;
 }
 
-async function getUpcomingMatches(limit = 5) {
-  const today = new Date().toISOString().split('T')[0];
+async function getUpcomingMatches(limit = 15) {
   const { data } = await supabase
     .from('matches')
     .select('*')
-    .gte('match_date', today)
     .neq('status', 'settled')
     .order('match_date', { ascending: true })
     .limit(limit);
@@ -110,7 +149,6 @@ async function getUpcomingMatches(limit = 5) {
 // ─── Bids ───
 
 async function placeBid(userPhone, matchId, teamChosen) {
-  // Upsert: insert or update if user already bid on this match
   const { data, error } = await supabase
     .from('bids')
     .upsert(
@@ -154,7 +192,6 @@ async function addMatch(teamA, teamB, matchDate, weightage = 1.0) {
 }
 
 async function deleteMatch(matchId) {
-  // Delete any bids for this match first
   await supabase.from('bids').delete().eq('match_id', matchId);
   const { data, error } = await supabase
     .from('matches')
@@ -190,8 +227,12 @@ module.exports = {
   createUser,
   updateBalance,
   getActiveMatch,
+  getActiveMatches,
+  getOpenMatches,
+  getMatchById,
   getTodayMatch,
   getNextMatch,
+  getNextUpcomingMatch,
   updateMatchStatus,
   setMatchWinner,
   getUpcomingMatches,
