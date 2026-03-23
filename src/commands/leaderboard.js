@@ -9,11 +9,21 @@ module.exports = async function leaderboard() {
     return 'No players registered yet! Type *!register <name>* to join.';
   }
 
-  let text = '🏆 *LEADERBOARD* 🏆\n\n';
+  const topBalance = parseFloat(players[0].balance);
+
+  let text = `━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `🏆 *LEADERBOARD* 🏆\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+
   players.forEach((p, i) => {
-    const rank = MEDALS[i] || `${i + 1}.`;
-    text += `${rank} *${p.display_name}* — $${parseFloat(p.balance).toFixed(2)}\n`;
+    const bal = parseFloat(p.balance);
+    const medal = MEDALS[i] || `  ${i + 1}.`;
+    const bar = topBalance > 0 ? '▓'.repeat(Math.max(1, Math.round((bal / topBalance) * 8))) : '';
+    text += `${medal} *${p.display_name}*\n`;
+    text += `    ${bar} *$${bal.toFixed(2)}*\n`;
   });
+
+  text += `\n━━━━━━━━━━━━━━━━━━━━`;
 
   return text;
 };

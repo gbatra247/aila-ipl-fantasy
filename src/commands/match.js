@@ -1,21 +1,25 @@
 const { getActiveMatch, getNextMatch, getMatchBids } = require('../db');
 const { calculateOdds } = require('../odds');
 
-const TEAM_NAMES = {
-  CSK: 'Chennai Super Kings',
-  MI: 'Mumbai Indians',
-  RCB: 'Royal Challengers Bengaluru',
-  KKR: 'Kolkata Knight Riders',
-  SRH: 'Sunrisers Hyderabad',
-  DC: 'Delhi Capitals',
-  RR: 'Rajasthan Royals',
-  PBKS: 'Punjab Kings',
-  GT: 'Gujarat Titans',
-  LSG: 'Lucknow Super Giants',
+const TEAM_EMOJI = {
+  CSK: '💛',
+  MI: '💙',
+  RCB: '❤️',
+  KKR: '💜',
+  SRH: '🧡',
+  DC: '💙',
+  RR: '💗',
+  PBKS: '🔴',
+  GT: '🩵',
+  LSG: '💚',
 };
 
+function makeBar(pct, len = 10) {
+  const filled = Math.round((pct / 100) * len);
+  return '▓'.repeat(filled) + '░'.repeat(len - filled);
+}
+
 module.exports = async function match() {
-  // First check for an active (open/closed) match
   let m = await getActiveMatch();
   if (!m) {
     m = await getNextMatch();
@@ -29,41 +33,57 @@ module.exports = async function match() {
   const odds = calculateOdds(bids, m.team_a, m.team_b);
 
   const dateStr = new Date(m.match_date).toLocaleDateString('en-IN', {
-    weekday: 'short',
+    weekday: 'long',
     day: 'numeric',
     month: 'short',
+    year: 'numeric',
   });
 
-  const statusEmoji = {
-    upcoming: '📅',
-    open: '🟢',
-    closed: '🔴',
-    settled: '✅',
-  };
+  const emojiA = TEAM_EMOJI[m.team_a] || '⚪';
+  const emojiB = TEAM_EMOJI[m.team_b] || '⚪';
+  const wt = m.weightage && m.weightage !== 1 ? `  ⚖️ *${m.weightage}x*` : '';
 
-  const nameA = TEAM_NAMES[m.team_a] || m.team_a;
-  const nameB = TEAM_NAMES[m.team_b] || m.team_b;
-
-  let text = `${statusEmoji[m.status]} *${m.team_a} vs ${m.team_b}*\n`;
-  text += `${dateStr}\n\n`;
-
-  text += `📊 *Live Odds*\n`;
-  text += `┌─────────────────────┐\n`;
-  text += `│ ${m.team_a}: ${odds.teamA.odds}% │ ${odds.teamA.payout}x\n`;
-  text += `│ ${m.team_b}: ${odds.teamB.odds}% │ ${odds.teamB.payout}x\n`;
-  text += `└─────────────────────┘\n\n`;
-
-  text += `💰 Total Pool: *$${odds.totalPool}*\n`;
-  text += `👥 Bettors: ${bids.length}\n\n`;
+  let text = '';
 
   if (m.status === 'open') {
-    text += `Type *!bid ${m.team_a}* or *!bid ${m.team_b}* to place your bet!`;
-  } else if (m.status === 'upcoming') {
-    text += `⏳ Bidding not open yet. Admin will open it soon!`;
+    text += `🟢 *BIDDING OPEN*\n`;
   } else if (m.status === 'closed') {
-    text += `🔒 Bidding is closed. Waiting for result...`;
+    text += `🔴 *BIDDING CLOSED*\n`;
+  } else if (m.status === 'upcoming') {
+    text += `⏳ *COMING UP*\n`;
+  } else {
+    text += `✅ *SETTLED*\n`;
+  }
+
+  text += `━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `${emojiA}  *${m.team_a}*   🆚   *${m.team_b}*  ${emojiB}\n`;
+  text += `📅 ${dateStr}${wt}\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  if (bids.length > 0) {
+    text += `📊 *ODDS*\n\n`;
+    text += `${emojiA} ${m.team_a}  *${odds.teamA.odds}%*\n`;
+    text += `${makeBar(parseFloat(odds.teamA.odds))}\n`;
+    text += `${odds.teamA.bids} bids → payout *${odds.teamA.payout}x*\n\n`;
+    text += `${emojiB} ${m.team_b}  *${odds.teamB.odds}%*\n`;
+    text += `${makeBar(parseFloat(odds.teamB.odds))}\n`;
+    text += `${odds.teamB.bids} bids → payout *${odds.teamB.payout}x*\n\n`;
+  } else {
+    text += `📊 *ODDS*\n\n`;
+    text += `No bids yet — be the first! 🎯\n\n`;
+  }
+
+  text += `💰 Pool: *$${odds.totalPool}*  │  👥 Bettors: *${bids.length}*\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━\n`;
+
+  if (m.status === 'open') {
+    text += `\n👉 *!bid ${m.team_a}* or *!bid ${m.team_b}*`;
+  } else if (m.status === 'upcoming') {
+    text += `\n⏳ Bidding opens soon...`;
+  } else if (m.status === 'closed') {
+    text += `\n🔒 Waiting for result...`;
   } else if (m.status === 'settled') {
-    text += `🏆 Winner: *${m.winner}*`;
+    text += `\n🏆 Winner: *${m.winner}*`;
   }
 
   return text;

@@ -1,5 +1,10 @@
 const { getUser, getActiveMatch, placeBid, getUserBid, updateBalance } = require('../db');
 
+const TEAM_EMOJI = {
+  CSK: '💛', MI: '💙', RCB: '❤️', KKR: '💜', SRH: '🧡',
+  DC: '💙', RR: '💗', PBKS: '🔴', GT: '🩵', LSG: '💚',
+};
+
 module.exports = async function bid({ userPhone, args }) {
   const teamArg = args[0]?.toUpperCase();
   if (!teamArg) {
@@ -8,7 +13,7 @@ module.exports = async function bid({ userPhone, args }) {
 
   const user = await getUser(userPhone);
   if (!user) {
-    return '❌ You need to register first! Type *!register <your name>*';
+    return '❌ Register first! Type *!register <your name>*';
   }
 
   const match = await getActiveMatch();
@@ -20,31 +25,37 @@ module.exports = async function bid({ userPhone, args }) {
     return '🔒 Bidding is closed for this match.';
   }
 
-  // Validate team name
   if (teamArg !== match.team_a && teamArg !== match.team_b) {
     return `❌ Invalid team. Choose *${match.team_a}* or *${match.team_b}*`;
   }
 
-  // Check if user already bid (for balance logic)
+  const emoji = TEAM_EMOJI[teamArg] || '⚪';
   const existingBid = await getUserBid(userPhone, match.id);
 
   if (existingBid) {
     if (existingBid.team_chosen === teamArg) {
-      return `You've already bid on *${teamArg}*! Use !match to see odds.`;
+      return `${emoji} Already backing *${teamArg}*! Type *!match* for odds.`;
     }
-    // Changing bid - no balance change needed (already deducted $1)
     await placeBid(userPhone, match.id, teamArg);
-    return `🔄 Bid changed to *${teamArg}*! Good luck!`;
+    return `🔄 *Switched to ${teamArg}!* ${emoji}\n\n🏏 ${match.team_a} vs ${match.team_b}\nGood luck! 🤞`;
   }
 
-  // New bid - check balance
   if (parseFloat(user.balance) < 1) {
-    return '❌ Insufficient balance! You need at least $1 to bid.';
+    return '💸 Not enough balance! You need *$1* to bid.';
   }
 
-  // Deduct $1 and place bid
   await updateBalance(userPhone, -1);
   await placeBid(userPhone, match.id, teamArg);
 
-  return `✅ Bid placed on *${teamArg}*!\n\n💰 $1 deducted. New balance: *$${(parseFloat(user.balance) - 1).toFixed(2)}*\n\nYou can change your bid anytime before bidding closes. Type *!match* to see live odds.`;
+  const newBal = (parseFloat(user.balance) - 1).toFixed(2);
+
+  let text = `${emoji} *BID PLACED!* ${emoji}\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `🏏 ${match.team_a} vs ${match.team_b}\n`;
+  text += `✅ Your pick: *${teamArg}*\n`;
+  text += `💰 -$1 → Balance: *$${newBal}*\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+  text += `Type *!match* for live odds 📊`;
+
+  return text;
 };
