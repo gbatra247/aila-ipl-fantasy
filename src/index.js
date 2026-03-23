@@ -10,7 +10,11 @@ const {
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
+const http = require('http');
 const { handleMessage } = require('./bot');
+
+let latestQR = null;
 
 function deleteAuthFolder() {
   const authPath = path.join(process.cwd(), '.auth');
@@ -48,11 +52,19 @@ async function startBot() {
     const { connection, lastDisconnect, qr: qrCode } = update;
 
     if (qrCode) {
+      latestQR = qrCode;
       console.log('\n========================================');
       console.log('  Scan this QR with WhatsApp:');
       console.log('  (Linked Devices > Link a Device)');
       console.log('========================================\n');
       qrcode.generate(qrCode, { small: true });
+
+      // Generate QR as data URL for Railway
+      QRCode.toDataURL(qrCode, { width: 300 }).then(url => {
+        console.log('\n🔗 If QR above is hard to scan, open this URL in browser:');
+        console.log(`   http://localhost:${process.env.PORT || 3000}/qr`);
+        console.log('');
+      }).catch(() => {});
     }
 
     if (connection === 'close') {
@@ -143,5 +155,35 @@ async function startBot() {
   });
 }
 
+// Mini HTTP server for QR code scanning (useful on Railway)
+const PORT = process.env.PORT || 3000;
+http.createServer(async (req, res) => {
+  if (req.url === '/qr' && latestQR) {
+    const qrImage = await QRCode.toDataURL(latestQR, { width: 400 });
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`
+      <html>
+        <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;flex-direction:column">
+          <h2 style="color:white;font-family:sans-serif">Scan with WhatsApp</h2>
+          <img src="${qrImage}" style="border-radius:12px"/>
+          <p style="color:#888;font-family:sans-serif">Linked Devices > Link a Device</p>
+          <script>setTimeout(()=>location.reload(),30000)</script>
+        </body>
+      </html>
+    `);
+  } else {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111"><h2 style="color:white;font-family:sans-serif">AIla Bot is running! No QR needed.</h2></body></html>');
+  }
+}).listen(PORT, () => {
+  console.log(`QR server running on port ${PORT}`);
+});
+
 console.log('Starting AIla IPL Fantasy Bot...');
+
+// Delete old auth to force fresh pairing on Railway
+if (process.env.RAILWAY_ENVIRONMENT) {
+  deleteAuthFolder();
+}
+
 startBot();
