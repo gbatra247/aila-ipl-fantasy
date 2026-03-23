@@ -24,6 +24,7 @@ const commands = {
   status: admin.status,
   addmatch: admin.addmatch,
   deletematch: admin.deletematch,
+  reset: admin.reset,
 };
 
 async function handleMessage(sock, msg) {

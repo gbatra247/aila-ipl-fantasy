@@ -203,6 +203,16 @@ async function deleteMatch(matchId) {
   return data;
 }
 
+// ─── Reset ───
+
+async function resetAll() {
+  await supabase.from('bids').delete().neq('id', 0);
+  await supabase.from('matches').delete().neq('id', 0);
+  await supabase.from('profiles').delete().neq('phone', '');
+  // Reset match ID sequence
+  await supabase.rpc('reset_match_sequence').catch(() => {});
+}
+
 // ─── Admin ───
 
 async function isAdmin(phone) {
@@ -243,4 +253,5 @@ module.exports = {
   deleteMatch,
   isAdmin,
   getLeaderboard,
+  resetAll,
 };

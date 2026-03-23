@@ -241,4 +241,17 @@ async function status({ userPhone, args }) {
   return text;
 }
 
-module.exports = { open, close, winner, schedule, status, addmatch, deletematch };
+// !reset - Wipe everything and start fresh
+async function reset({ userPhone, args }) {
+  const denied = await requireAdmin(userPhone);
+  if (denied) return denied;
+
+  if (args[0] !== 'CONFIRM') {
+    return `⚠️ This will delete ALL matches, bids, and players!\n\nType *!reset CONFIRM* to proceed.`;
+  }
+
+  await db.resetAll();
+  return `🔄 *FULL RESET COMPLETE*\n━━━━━━━━━━━━━━━━━━━━\nAll matches, bids, and players wiped.\nMatch IDs reset to 1.\n\nEveryone needs to *!register* again.`;
+}
+
+module.exports = { open, close, winner, schedule, status, addmatch, deletematch, reset };
